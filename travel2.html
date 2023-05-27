@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>จุดท่องเที่ยวเชียงใหม่</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="search-options">
+        <h3>เลือก Category การค้นหา</h3>
+        <div class="dropdown">
+            <button class="dropbtn">เลือก Category <i class="fa fa-caret-down"></i></button>
+            <div class="dropdown-content">
+                <a href="#" onclick="searchMarkers('ALL')">Random</a>
+                <a href="#" onclick="searchMarkers('OTHER')">Other Place Type</a>
+                <a href="#" onclick="searchMarkers('SHOP')">Shopping Type</a>
+                <a href="#" onclick="searchMarkers('RESTAURANT')">Restaurant Type</a>
+                <a href="#" onclick="searchMarkers('ACCOMMODATION')">Hotel Type</a>
+                <a href="#" onclick="searchMarkers('ATTRACTION')">Attraction Type</a>
+            </div>
+        </div>
+        <button onclick="showMarkers()">แสดง Marker</button>
+        <button onclick="hideMarkers()">ซ่อน Marker</button>
+    </div>
+    
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        var map = L.map('map').setView([13.7367, 100.5232], 6);
+        var markers = [];
+        var userMarker;
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 14,
+        }).addTo(map);
+
+        function searchMarkers(categoryCode, userLatLng = null) {
+            hideMarkers();
+            markers = [];
+            fetch('https://tatapi.tourismthailand.org/tatapi/v5/places/search?numberOfResult=100&provincename=เชียงใหม่&categorycodes=' + categoryCode, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json, text/json',
+                    'Authorization': 'Bearer GBE4cijMGt6fCCuiC53CDYCF)2z39hA6ZrJ4rCrs4QY4totWjml4Vxetz9FPvbCptnugQmP0QvgF1xiaslxLxuG=====2',
+                    'Accept-Language': 'th'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                var result = data.result;
+                for (var i = 0; i < result.length; i++) {
+                    var place = result[i];
+                    var marker = L.marker([place.latitude, place.longitude]).addTo(map);
+                    markers.push(marker);
+                    marker.bindPopup(
+                        `<div class="popup-content">
+                            <div class="name">${place.place_name}</div>
+                            <div class="coords">${place.latitude}, ${place.longitude}</div>
+                            <div class="description">
+                                Category: ${place.category_description} (${place.category_code})<br/>
+                                Address: ${place.location.address}, ${place.location.sub_district}<br/>
+                            </div>
+                        </div>`
+                    );
+
+                    if (userLatLng) {
+                        marker.on('click', function(e) {
+                            var destinationLatLng = [e.latlng.lat, e.latlng.lng];
+                            for (var j = 0; j < markers.length; j++) {
+                                var otherMarker = markers[j];
+                                if (otherMarker !== this && otherMarker.polyline) {
+                                    otherMarker.polyline.remove();
+                                }
+                            }
+
+                            addRouteToMarker(this, userLatLng, destinationLatLng);
+                        });
+                    }
+                }
+            });
+        }
+
+        function showMarkers() {
+            for (var i = 0; i < markers.length; i++) {
+                markers[i].addTo(map);
+            }
+        }
+
+        function hideMarkers() {
+            for (var i = 0; i < markers.length; i++) {
+                markers[i].remove();
+            }
+        }
+
+        function addRouteToMarker(marker, userLatLng, destinationLatLng) {
+            if (marker.polyline) {
+                marker.polyline.remove();
+            }
+
+            var directionsUrl = 'https://api.openrouteservice.org/v2/directions/driving-car?api_key=5b3ce3597851110001cf6248f2d3179444d847aab1231a9e06b7472a&start=' +
+                userLatLng[1] + ',' + userLatLng[0] + '&end=' +
+                destinationLatLng[1] + ',' + destinationLatLng[0];
+
+            fetch(directionsUrl)
+            .then(response => response.json())
+            .then(data => {
+                var route = data.features[0].geometry;
+
+                var polyline = L.geoJSON(route).addTo(map);
+
+                marker.polyline = polyline;
+            });
+        }
+
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(function(position) {
+                var userLatLng = [position.coords.latitude, position.coords.longitude];
+
+                if (userMarker) {
+                    userMarker.remove();
+                }
+
+                userMarker = L.marker(userLatLng).addTo(map)
+                    .bindPopup('Your location')
+                    .openPopup();
+
+                map.eachLayer(function(layer) {
+                    if (layer instanceof L.Polyline) {
+                        layer.remove();
+                    }
+                });
+
+                // Call searchMarkers with the user's current location.
+                searchMarkers('ALL', userLatLng);
+            });
+        } else {
+            alert('Geolocation is not supported by your browser');
+        }
+    </script>
+</body>
+</html>
